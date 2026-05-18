@@ -1,0 +1,23 @@
+{
+  "name": "tokyo-park-availability-notifier",
+  "version": "0.1.0",
+  "private": true,
+  "description": "都立公園スポーツ施設の空き状況を定期検索し、浮間公園の空きをLINE通知するバッチ",
+  "type": "module",
+  "scripts": {
+    "build": "tsc -p tsconfig.json",
+    "start": "node dist/main.js",
+    "watch": "node dist/main.js --watch",
+    "dev": "tsx src/main.ts",
+    "test": "vitest run"
+  },
+  "dependencies": {
+    "playwright": "^1.54.2"
+  },
+  "devDependencies": {
+    "@types/node": "^24.3.0",
+    "tsx": "^4.20.5",
+    "typescript": "^5.9.2",
+    "vitest": "^3.2.4"
+  }
+}
