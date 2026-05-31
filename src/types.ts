@@ -13,6 +13,23 @@ export interface TokyoParksConfig {
   settleMs: number;
 }
 
+export type SkytreeLeagueListingStatus = "openWithGround" | "openWithoutGround";
+
+export interface SkytreeLeagueConfig {
+  enabled: boolean;
+  loginUrl: string;
+  scheduleUrl: string;
+  targetSaturdayOccurrences: number[];
+  includeNextMonthWhenRemainingTargetDatesAtMost: number;
+  includePastDates: boolean;
+  targetAreas: string[];
+  listingStatuses: SkytreeLeagueListingStatus[];
+  excludeDeadlineLabels: string[];
+  headless: boolean;
+  navigationTimeoutMs: number;
+  settleMs: number;
+}
+
 export interface StorageConfig {
   notifiedPath: string;
 }
@@ -23,6 +40,7 @@ export interface NotificationConfig {
 
 export interface AppConfig {
   tokyoParks: TokyoParksConfig;
+  skytreeLeague: SkytreeLeagueConfig;
   storage: StorageConfig;
   notifications: NotificationConfig;
 }
@@ -31,6 +49,11 @@ export interface LineNotificationSecrets {
   apiUrl: string;
   accessToken: string;
   recipientId: string;
+}
+
+export interface SkytreeLeagueSecrets {
+  userId: string;
+  password: string;
 }
 
 export interface TargetDate {
@@ -42,10 +65,13 @@ export interface TargetDate {
   occurrence: number;
 }
 
-export interface AvailabilitySlot {
+export interface NotifiableItem {
   key: string;
-  date: string;
   ymd: string;
+}
+
+export interface AvailabilitySlot extends NotifiableItem {
+  date: string;
   weekday: string;
   parkName: string;
   facilityName: string;
@@ -58,14 +84,38 @@ export interface AvailabilitySlot {
   detectedAt: string;
 }
 
-export interface NotifiedRecord {
+export interface SkytreeLeagueMatchListing extends NotifiableItem {
+  id: string;
+  date: string;
+  weekday: string;
+  startTime: string;
+  endTime: string;
+  competitionType: string;
+  listingStatus: SkytreeLeagueListingStatus;
+  listingStatusLabel: string;
+  area: string;
+  groundName: string;
+  hostTeam: string;
+  hostTeamUrl: string | null;
+  className: string;
+  applicantTeam: string | null;
+  note: string;
+  deadlineText: string;
+  detailUrl: string;
+  detectedAt: string;
+}
+
+export type NotificationItem = AvailabilitySlot | SkytreeLeagueMatchListing;
+
+export interface NotifiedRecord<T extends NotifiableItem = NotifiableItem> {
   key: string;
   firstNotifiedAt: string;
   lastSeenAt: string;
-  slot: AvailabilitySlot;
+  item?: T;
+  slot?: AvailabilitySlot;
 }
 
-export interface NotifiedState {
+export interface NotifiedState<T extends NotifiableItem = NotifiableItem> {
   lastRunAt: string | null;
-  notified: NotifiedRecord[];
+  notified: NotifiedRecord<T>[];
 }

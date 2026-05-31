@@ -1,6 +1,6 @@
 import { mkdir, readFile, rename, writeFile } from "node:fs/promises";
 import { dirname, resolve } from "node:path";
-import type { AvailabilitySlot, NotifiedRecord, NotifiedState } from "./types.js";
+import type { AvailabilitySlot, NotifiableItem, NotifiedRecord, NotifiedState } from "./types.js";
 
 const EMPTY_STATE: NotifiedState = {
   lastRunAt: null,
@@ -31,39 +31,45 @@ export class NotifiedStore {
     const parsed = JSON.parse(raw) as Partial<NotifiedState>;
     return {
       lastRunAt: typeof parsed.lastRunAt === "string" ? parsed.lastRunAt : null,
-      notified: Array.isArray(parsed.notified) ? parsed.notified : [],
+      notified: Array.isArray(parsed.notified) ? parsed.notified.flatMap((record) => normalizeRecord(record)) : [],
     };
   }
 
-  async saveRun(slots: AvailabilitySlot[], newSlots: AvailabilitySlot[], now: string, minYmdToKeep: string): Promise<void> {
+  async saveRun(
+    items: NotifiableItem[],
+    newItems: NotifiableItem[],
+    now: string,
+    minYmdToKeep: string,
+  ): Promise<void> {
     await this.withWriteLock(async () => {
       const current = await this.get();
       const byKey = new Map<string, NotifiedRecord>();
 
       for (const record of current.notified) {
-        if (record.slot.ymd >= minYmdToKeep) {
+        const item = getRecordItem(record);
+        if (item && item.ymd >= minYmdToKeep) {
           byKey.set(record.key, record);
         }
       }
 
-      for (const slot of slots) {
-        const currentRecord = byKey.get(slot.key);
+      for (const item of items) {
+        const currentRecord = byKey.get(item.key);
         if (currentRecord) {
-          byKey.set(slot.key, {
+          byKey.set(item.key, {
             ...currentRecord,
             lastSeenAt: now,
-            slot,
+            ...createItemFields(item),
           });
         }
       }
 
-      for (const slot of newSlots) {
-        if (!byKey.has(slot.key)) {
-          byKey.set(slot.key, {
-            key: slot.key,
+      for (const item of newItems) {
+        if (!byKey.has(item.key)) {
+          byKey.set(item.key, {
+            key: item.key,
             firstNotifiedAt: now,
             lastSeenAt: now,
-            slot,
+            ...createItemFields(item),
           });
         }
       }
@@ -88,7 +94,55 @@ export class NotifiedStore {
   }
 }
 
-export function findNewSlots(slots: AvailabilitySlot[], state: NotifiedState): AvailabilitySlot[] {
-  const knownKeys = new Set(state.notified.map((record) => record.key));
-  return slots.filter((slot) => !knownKeys.has(slot.key));
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return Boolean(value) && typeof value === "object" && !Array.isArray(value);
 }
+
+function isNotifiableItem(value: unknown): value is NotifiableItem {
+  return isRecord(value) && typeof value.key === "string" && typeof value.ymd === "string";
+}
+
+function isAvailabilitySlot(value: NotifiableItem): value is AvailabilitySlot {
+  return "parkName" in value && "startTime" in value && "facilityName" in value;
+}
+
+function normalizeRecord(value: unknown): NotifiedRecord[] {
+  if (!isRecord(value) || typeof value.key !== "string") {
+    return [];
+  }
+
+  const item = isNotifiableItem(value.item) ? value.item : isNotifiableItem(value.slot) ? value.slot : null;
+  if (!item) {
+    return [];
+  }
+
+  const record: NotifiedRecord = {
+    key: value.key,
+    firstNotifiedAt: typeof value.firstNotifiedAt === "string" ? value.firstNotifiedAt : "",
+    lastSeenAt: typeof value.lastSeenAt === "string" ? value.lastSeenAt : "",
+    item,
+  };
+  if (isNotifiableItem(value.slot) && isAvailabilitySlot(value.slot)) {
+    record.slot = value.slot;
+  }
+
+  return [record];
+}
+
+function getRecordItem(record: NotifiedRecord): NotifiableItem | null {
+  return record.item ?? record.slot ?? null;
+}
+
+function createItemFields(item: NotifiableItem): Pick<NotifiedRecord, "item" | "slot"> {
+  return {
+    item,
+    ...(isAvailabilitySlot(item) ? { slot: item } : {}),
+  };
+}
+
+export function findNewItems<T extends NotifiableItem>(items: T[], state: NotifiedState): T[] {
+  const knownKeys = new Set(state.notified.map((record) => record.key));
+  return items.filter((item) => !knownKeys.has(item.key));
+}
+
+export const findNewSlots = findNewItems;

@@ -54,16 +54,45 @@ export function getNthWeekdayOfMonth(
   return null;
 }
 
+export function countRemainingTargetDatesInCurrentMonth(options: {
+  referenceDate?: Date;
+  occurrences: number[];
+  weekday?: number;
+}): number {
+  const referenceDate = startOfLocalDay(options.referenceDate ?? new Date());
+  const weekday = options.weekday ?? SATURDAY;
+  let count = 0;
+
+  for (const occurrence of options.occurrences) {
+    const date = getNthWeekdayOfMonth(referenceDate.getFullYear(), referenceDate.getMonth(), weekday, occurrence);
+    if (date && date > referenceDate) {
+      count += 1;
+    }
+  }
+
+  return count;
+}
+
 export function buildTargetDates(options: {
   referenceDate?: Date;
   occurrences: number[];
-  includeNextMonthFromDay: number;
+  includeNextMonthFromDay?: number;
+  includeNextMonthWhenRemainingTargetDatesAtMost?: number;
   includePastDates: boolean;
 }): TargetDate[] {
   const referenceDate = startOfLocalDay(options.referenceDate ?? new Date());
   const targetMonths = [{ year: referenceDate.getFullYear(), monthIndex: referenceDate.getMonth() }];
 
-  if (referenceDate.getDate() >= options.includeNextMonthFromDay) {
+  const includeNextMonthByDay =
+    typeof options.includeNextMonthFromDay === "number" && referenceDate.getDate() >= options.includeNextMonthFromDay;
+  const includeNextMonthByRemainingTargets =
+    typeof options.includeNextMonthWhenRemainingTargetDatesAtMost === "number" &&
+    countRemainingTargetDatesInCurrentMonth({
+      referenceDate,
+      occurrences: options.occurrences,
+    }) <= Math.max(0, Math.floor(options.includeNextMonthWhenRemainingTargetDatesAtMost));
+
+  if (includeNextMonthByDay || includeNextMonthByRemainingTargets) {
     const nextMonth = new Date(referenceDate.getFullYear(), referenceDate.getMonth() + 1, 1, 12, 0, 0, 0);
     targetMonths.push({ year: nextMonth.getFullYear(), monthIndex: nextMonth.getMonth() });
   }

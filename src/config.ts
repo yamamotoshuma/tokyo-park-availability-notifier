@@ -1,6 +1,11 @@
 import { readFile } from "node:fs/promises";
 import { join, resolve } from "node:path";
-import type { AppConfig, LineNotificationSecrets } from "./types.js";
+import type {
+  AppConfig,
+  LineNotificationSecrets,
+  SkytreeLeagueListingStatus,
+  SkytreeLeagueSecrets,
+} from "./types.js";
 
 const DEFAULT_CONFIG: AppConfig = {
   tokyoParks: {
@@ -16,6 +21,20 @@ const DEFAULT_CONFIG: AppConfig = {
     headless: true,
     navigationTimeoutMs: 45_000,
     settleMs: 2_500,
+  },
+  skytreeLeague: {
+    enabled: true,
+    loginUrl: "https://ts-league.com/team/order-made/login.php",
+    scheduleUrl: "https://ts-league.com/team/order-made/schedule.php",
+    targetSaturdayOccurrences: [1, 3, 5],
+    includeNextMonthWhenRemainingTargetDatesAtMost: 1,
+    includePastDates: false,
+    targetAreas: [],
+    listingStatuses: ["openWithGround"],
+    excludeDeadlineLabels: ["締切", "終了", "調整中"],
+    headless: true,
+    navigationTimeoutMs: 45_000,
+    settleMs: 1_000,
   },
   storage: {
     notifiedPath: "data/notified.json",
@@ -62,6 +81,31 @@ function readNumberArray(value: unknown, fallback: number[]): number[] {
   return normalized.length > 0 ? Array.from(new Set(normalized)) : fallback;
 }
 
+function readStringArray(value: unknown, fallback: string[]): string[] {
+  if (!Array.isArray(value)) {
+    return fallback;
+  }
+
+  const normalized = value
+    .map((entry) => (typeof entry === "string" ? entry.trim() : ""))
+    .filter((entry) => entry !== "");
+
+  return normalized.length > 0 ? Array.from(new Set(normalized)) : fallback;
+}
+
+function readListingStatusArray(value: unknown, fallback: SkytreeLeagueListingStatus[]): SkytreeLeagueListingStatus[] {
+  if (!Array.isArray(value)) {
+    return fallback;
+  }
+
+  const allowed = new Set<SkytreeLeagueListingStatus>(["openWithGround", "openWithoutGround"]);
+  const normalized = value.filter((entry): entry is SkytreeLeagueListingStatus => {
+    return typeof entry === "string" && allowed.has(entry as SkytreeLeagueListingStatus);
+  });
+
+  return normalized.length > 0 ? Array.from(new Set(normalized)) : fallback;
+}
+
 async function readJsonIfExists(filePath: string): Promise<Record<string, unknown> | null> {
   try {
     return JSON.parse(await readFile(filePath, "utf8")) as Record<string, unknown>;
@@ -80,6 +124,7 @@ export async function loadConfig(projectRoot: string): Promise<AppConfig> {
   const raw = (await readJsonIfExists(configPath)) ?? {};
 
   const tokyoParksRaw = asRecord(raw.tokyoParks);
+  const skytreeLeagueRaw = asRecord(raw.skytreeLeague);
   const storageRaw = asRecord(raw.storage);
   const notificationsRaw = asRecord(raw.notifications);
 
@@ -103,6 +148,35 @@ export async function loadConfig(projectRoot: string): Promise<AppConfig> {
       headless: readBoolean(tokyoParksRaw.headless, DEFAULT_CONFIG.tokyoParks.headless),
       navigationTimeoutMs: readNumber(tokyoParksRaw.navigationTimeoutMs, DEFAULT_CONFIG.tokyoParks.navigationTimeoutMs),
       settleMs: readNumber(tokyoParksRaw.settleMs, DEFAULT_CONFIG.tokyoParks.settleMs),
+    },
+    skytreeLeague: {
+      enabled: readBoolean(skytreeLeagueRaw.enabled, DEFAULT_CONFIG.skytreeLeague.enabled),
+      loginUrl: readString(skytreeLeagueRaw.loginUrl, DEFAULT_CONFIG.skytreeLeague.loginUrl),
+      scheduleUrl: readString(skytreeLeagueRaw.scheduleUrl, DEFAULT_CONFIG.skytreeLeague.scheduleUrl),
+      targetSaturdayOccurrences: readNumberArray(
+        skytreeLeagueRaw.targetSaturdayOccurrences,
+        DEFAULT_CONFIG.skytreeLeague.targetSaturdayOccurrences,
+      ),
+      includeNextMonthWhenRemainingTargetDatesAtMost: readNumber(
+        skytreeLeagueRaw.includeNextMonthWhenRemainingTargetDatesAtMost,
+        DEFAULT_CONFIG.skytreeLeague.includeNextMonthWhenRemainingTargetDatesAtMost,
+      ),
+      includePastDates: readBoolean(skytreeLeagueRaw.includePastDates, DEFAULT_CONFIG.skytreeLeague.includePastDates),
+      targetAreas: readStringArray(skytreeLeagueRaw.targetAreas, DEFAULT_CONFIG.skytreeLeague.targetAreas),
+      listingStatuses: readListingStatusArray(
+        skytreeLeagueRaw.listingStatuses,
+        DEFAULT_CONFIG.skytreeLeague.listingStatuses,
+      ),
+      excludeDeadlineLabels: readStringArray(
+        skytreeLeagueRaw.excludeDeadlineLabels,
+        DEFAULT_CONFIG.skytreeLeague.excludeDeadlineLabels,
+      ),
+      headless: readBoolean(skytreeLeagueRaw.headless, DEFAULT_CONFIG.skytreeLeague.headless),
+      navigationTimeoutMs: readNumber(
+        skytreeLeagueRaw.navigationTimeoutMs,
+        DEFAULT_CONFIG.skytreeLeague.navigationTimeoutMs,
+      ),
+      settleMs: readNumber(skytreeLeagueRaw.settleMs, DEFAULT_CONFIG.skytreeLeague.settleMs),
     },
     storage: {
       notifiedPath: readString(storageRaw.notifiedPath, DEFAULT_CONFIG.storage.notifiedPath),
@@ -128,6 +202,10 @@ export async function loadLineSecrets(projectRoot: string): Promise<LineNotifica
 
   const notifications = asRecord(raw.notifications ?? raw);
   const line = asRecord(notifications.line ?? notifications);
+  if (!("accessToken" in line) && !("recipientId" in line)) {
+    return null;
+  }
+
   const accessToken = assertString(line.accessToken, "line.accessToken");
   const recipientId = assertString(line.recipientId, "line.recipientId");
   if (accessToken === "SET_LOCALLY" || recipientId === "SET_LOCALLY") {
@@ -138,5 +216,31 @@ export async function loadLineSecrets(projectRoot: string): Promise<LineNotifica
     apiUrl: readString(line.apiUrl, "https://api.line.me/v2/bot/message/push"),
     accessToken,
     recipientId,
+  };
+}
+
+export async function loadSkytreeLeagueSecrets(projectRoot: string): Promise<SkytreeLeagueSecrets | null> {
+  const raw = await readJsonIfExists(join(projectRoot, "secrets", "notifications.local.json"));
+  if (!raw) {
+    return null;
+  }
+
+  const notifications = asRecord(raw.notifications ?? raw);
+  const skytreeLeague = asRecord(notifications.skytreeLeague ?? raw.skytreeLeague);
+  const userIdRaw = skytreeLeague.userId ?? skytreeLeague.userid;
+  const passwordRaw = skytreeLeague.password;
+  if (!userIdRaw && !passwordRaw) {
+    return null;
+  }
+
+  const userId = assertString(userIdRaw, "skytreeLeague.userId");
+  const password = assertString(passwordRaw, "skytreeLeague.password");
+  if (userId === "SET_LOCALLY" || password === "SET_LOCALLY") {
+    return null;
+  }
+
+  return {
+    userId,
+    password,
   };
 }

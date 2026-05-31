@@ -2,7 +2,7 @@
   "name": "tokyo-park-availability-notifier",
   "version": "0.1.0",
   "private": true,
-  "description": "都立公園スポーツ施設の空き状況を定期検索し、浮間公園の空きをLINE通知するバッチ",
+  "description": "都立公園の空き状況とスカイツリーグの試合募集を定期検索し、LINE通知するバッチ",
   "type": "module",
   "scripts": {
     "build": "tsc -p tsconfig.json",
