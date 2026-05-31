@@ -23,6 +23,8 @@ export interface SkytreeLeagueConfig {
   includeNextMonthWhenRemainingTargetDatesAtMost: number;
   includePastDates: boolean;
   targetAreas: string[];
+  competitionTypes: string[];
+  excludeWithinDays: number;
   listingStatuses: SkytreeLeagueListingStatus[];
   excludeDeadlineLabels: string[];
   headless: boolean;

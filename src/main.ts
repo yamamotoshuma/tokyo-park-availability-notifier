@@ -148,7 +148,7 @@ async function runSkytreeLeague(options: {
 
   const state = await options.store.get();
   const client = new SkytreeLeagueClient(options.config.skytreeLeague, secrets);
-  const listings = await client.search(targets);
+  const listings = await client.search(targets, options.now);
   const newListings = findNewItems(listings, state);
   let notifiedNewListings = newListings;
 

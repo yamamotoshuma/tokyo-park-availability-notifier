@@ -10,6 +10,8 @@ const baseConfig: SkytreeLeagueConfig = {
   includeNextMonthWhenRemainingTargetDatesAtMost: 1,
   includePastDates: false,
   targetAreas: [],
+  competitionTypes: ["LG"],
+  excludeWithinDays: 7,
   listingStatuses: ["openWithGround"],
   excludeDeadlineLabels: ["締切", "終了", "調整中"],
   headless: true,
@@ -73,9 +75,62 @@ describe("filterListings", () => {
         targetAreas: ["練馬区"],
       },
       detectedAt: "2026-05-31T00:00:00.000Z",
+      referenceDate: new Date(2026, 4, 20, 12),
     });
 
     expect(listings.map((listing) => listing.id)).toEqual(["1"]);
     expect(listings[0]?.key).toBe("skytreeLeague|1");
+  });
+
+  it("normalizes target areas for spaced wards and prefecture suffixes", () => {
+    const listings = __privateForTests.filterListings({
+      rows: [
+        row({ id: "1", area: "北　区", groundName: "中央公園野球場" }),
+        row({ id: "2", area: "埼玉", groundName: "所沢航空記念公園" }),
+        row({ id: "3", area: "大田区", groundName: "多摩川緑地" }),
+      ] as never,
+      targets: [target("20260606")],
+      config: {
+        ...baseConfig,
+        targetAreas: ["北区", "埼玉県"],
+      },
+      detectedAt: "2026-05-31T00:00:00.000Z",
+      referenceDate: new Date(2026, 4, 20, 12),
+    });
+
+    expect(listings.map((listing) => listing.id)).toEqual(["1", "2"]);
+  });
+
+  it("excludes listings within the configured lead time", () => {
+    const listings = __privateForTests.filterListings({
+      rows: [
+        row({ id: "1", dateTimeText: "2026シーズン 2026年06月06日 (土) 9： 00 -11： 00" }),
+        row({ id: "2", dateTimeText: "2026シーズン 2026年06月13日 (土) 9： 00 -11： 00" }),
+      ] as never,
+      targets: [target("20260606"), target("20260613")],
+      config: baseConfig,
+      detectedAt: "2026-05-31T00:00:00.000Z",
+      referenceDate: new Date(2026, 4, 31, 12),
+    });
+
+    expect(listings.map((listing) => listing.id)).toEqual(["2"]);
+  });
+
+  it("filters competition types when configured", () => {
+    const listings = __privateForTests.filterListings({
+      rows: [
+        row({ id: "1", competitionType: "LG" }),
+        row({ id: "2", competitionType: "RC" }),
+      ] as never,
+      targets: [target("20260606")],
+      config: {
+        ...baseConfig,
+        competitionTypes: ["LG"],
+      },
+      detectedAt: "2026-05-31T00:00:00.000Z",
+      referenceDate: new Date(2026, 4, 20, 12),
+    });
+
+    expect(listings.map((listing) => listing.id)).toEqual(["1"]);
   });
 });

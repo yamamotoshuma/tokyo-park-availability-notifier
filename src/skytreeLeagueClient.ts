@@ -81,9 +81,39 @@ function listingKey(id: string): string {
   return `skytreeLeague|${id}`;
 }
 
+function startOfLocalDay(date: Date): Date {
+  return new Date(date.getFullYear(), date.getMonth(), date.getDate(), 12, 0, 0, 0);
+}
+
+function dateStringToLocalDay(value: string): Date | null {
+  const match = value.match(/^(\d{4})-(\d{2})-(\d{2})$/);
+  if (!match) {
+    return null;
+  }
+
+  return new Date(Number(match[1]), Number(match[2]) - 1, Number(match[3]), 12, 0, 0, 0);
+}
+
+export function normalizeAreaFilterText(value: string): string {
+  return normalizeComparableText(value).replace(/[都道府県]$/u, "");
+}
+
 function shouldExcludeDeadline(deadlineText: string, excludeDeadlineLabels: string[]): boolean {
   const normalizedDeadline = normalizeComparableText(deadlineText);
   return excludeDeadlineLabels.some((label) => normalizedDeadline.includes(normalizeComparableText(label)));
+}
+
+function isWithinExcludedLeadTime(date: string, referenceDate: Date, excludeWithinDays: number): boolean {
+  const listingDate = dateStringToLocalDay(date);
+  if (!listingDate) {
+    return false;
+  }
+
+  const normalizedReferenceDate = startOfLocalDay(referenceDate);
+  const daysFromReference = Math.floor(
+    (listingDate.getTime() - normalizedReferenceDate.getTime()) / (24 * 60 * 60 * 1000),
+  );
+  return daysFromReference <= Math.max(-1, Math.floor(excludeWithinDays));
 }
 
 function rawRowToListing(row: RawSkytreeLeagueListingRow, detectedAt: string): SkytreeLeagueMatchListing | null {
@@ -117,9 +147,11 @@ function filterListings(options: {
   targets: TargetDate[];
   config: SkytreeLeagueConfig;
   detectedAt: string;
+  referenceDate: Date;
 }): SkytreeLeagueMatchListing[] {
   const targetYmds = new Set(options.targets.map((target) => target.ymd));
-  const targetAreas = options.config.targetAreas.map(normalizeComparableText);
+  const targetAreas = options.config.targetAreas.map(normalizeAreaFilterText);
+  const competitionTypes = options.config.competitionTypes.map(normalizeComparableText);
   const listings: SkytreeLeagueMatchListing[] = [];
 
   for (const row of options.rows) {
@@ -127,7 +159,13 @@ function filterListings(options: {
     if (!listing || !targetYmds.has(listing.ymd)) {
       continue;
     }
-    if (targetAreas.length > 0 && !targetAreas.includes(normalizeComparableText(listing.area))) {
+    if (isWithinExcludedLeadTime(listing.date, options.referenceDate, options.config.excludeWithinDays)) {
+      continue;
+    }
+    if (targetAreas.length > 0 && !targetAreas.includes(normalizeAreaFilterText(listing.area))) {
+      continue;
+    }
+    if (competitionTypes.length > 0 && !competitionTypes.includes(normalizeComparableText(listing.competitionType))) {
       continue;
     }
     if (shouldExcludeDeadline(listing.deadlineText, options.config.excludeDeadlineLabels)) {
@@ -244,7 +282,7 @@ export class SkytreeLeagueClient {
     private readonly secrets: SkytreeLeagueSecrets,
   ) {}
 
-  async search(targets: TargetDate[]): Promise<SkytreeLeagueMatchListing[]> {
+  async search(targets: TargetDate[], referenceDate = new Date()): Promise<SkytreeLeagueMatchListing[]> {
     this.browser = await chromium.launch({
       headless: this.config.headless,
     });
@@ -268,6 +306,7 @@ export class SkytreeLeagueClient {
         targets,
         config: this.config,
         detectedAt,
+        referenceDate,
       });
     } finally {
       await context.close().catch(() => undefined);
@@ -286,4 +325,5 @@ export const __privateForTests = {
   rawRowToListing,
   filterListings,
   shouldExcludeDeadline,
+  isWithinExcludedLeadTime,
 };
