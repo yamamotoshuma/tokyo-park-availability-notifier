@@ -152,6 +152,7 @@ function filterListings(options: {
   const targetYmds = new Set(options.targets.map((target) => target.ymd));
   const targetAreas = options.config.targetAreas.map(normalizeAreaFilterText);
   const competitionTypes = options.config.competitionTypes.map(normalizeComparableText);
+  const excludedHostTeams = options.config.excludedHostTeams.map(normalizeComparableText);
   const listings: SkytreeLeagueMatchListing[] = [];
 
   for (const row of options.rows) {
@@ -166,6 +167,15 @@ function filterListings(options: {
       continue;
     }
     if (competitionTypes.length > 0 && !competitionTypes.includes(normalizeComparableText(listing.competitionType))) {
+      continue;
+    }
+    if (
+      options.config.excludeStartingAtOrAfter &&
+      listing.startTime >= options.config.excludeStartingAtOrAfter
+    ) {
+      continue;
+    }
+    if (excludedHostTeams.includes(normalizeComparableText(listing.hostTeam))) {
       continue;
     }
     if (shouldExcludeDeadline(listing.deadlineText, options.config.excludeDeadlineLabels)) {

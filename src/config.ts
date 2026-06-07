@@ -18,6 +18,7 @@ const DEFAULT_CONFIG: AppConfig = {
     targetSaturdayOccurrences: [1, 3, 5],
     includeNextMonthFromDay: 22,
     includePastDates: false,
+    excludeStartingAtOrAfter: "19:00",
     headless: true,
     navigationTimeoutMs: 45_000,
     settleMs: 2_500,
@@ -43,6 +44,8 @@ const DEFAULT_CONFIG: AppConfig = {
     ],
     competitionTypes: ["LG"],
     excludeWithinDays: 7,
+    excludeStartingAtOrAfter: "19:00",
+    excludedHostTeams: ["ORDERMADEBASEBALLclub"],
     listingStatuses: ["openWithGround"],
     excludeDeadlineLabels: ["締切", "終了", "調整中"],
     headless: true,
@@ -74,6 +77,28 @@ function readNullableString(value: unknown, fallback: string | null): string | n
   return typeof value === "string" && value.trim() !== "" ? value.trim() : fallback;
 }
 
+function readNullableTime(value: unknown, fallback: string | null): string | null {
+  if (value === null) {
+    return null;
+  }
+  if (typeof value !== "string") {
+    return fallback;
+  }
+
+  const match = value.trim().match(/^(\d{1,2}):(\d{2})$/);
+  if (!match) {
+    return fallback;
+  }
+
+  const hour = Number.parseInt(match[1] ?? "", 10);
+  const minute = Number.parseInt(match[2] ?? "", 10);
+  if (hour < 0 || hour > 23 || minute < 0 || minute > 59) {
+    return fallback;
+  }
+
+  return `${String(hour).padStart(2, "0")}:${String(minute).padStart(2, "0")}`;
+}
+
 function readBoolean(value: unknown, fallback: boolean): boolean {
   return typeof value === "boolean" ? value : fallback;
 }
@@ -103,7 +128,7 @@ function readStringArray(value: unknown, fallback: string[]): string[] {
     .map((entry) => (typeof entry === "string" ? entry.trim() : ""))
     .filter((entry) => entry !== "");
 
-  return normalized.length > 0 ? Array.from(new Set(normalized)) : fallback;
+  return Array.from(new Set(normalized));
 }
 
 function readListingStatusArray(value: unknown, fallback: SkytreeLeagueListingStatus[]): SkytreeLeagueListingStatus[] {
@@ -158,6 +183,10 @@ export async function loadConfig(projectRoot: string): Promise<AppConfig> {
         DEFAULT_CONFIG.tokyoParks.includeNextMonthFromDay,
       ),
       includePastDates: readBoolean(tokyoParksRaw.includePastDates, DEFAULT_CONFIG.tokyoParks.includePastDates),
+      excludeStartingAtOrAfter: readNullableTime(
+        tokyoParksRaw.excludeStartingAtOrAfter,
+        DEFAULT_CONFIG.tokyoParks.excludeStartingAtOrAfter,
+      ),
       headless: readBoolean(tokyoParksRaw.headless, DEFAULT_CONFIG.tokyoParks.headless),
       navigationTimeoutMs: readNumber(tokyoParksRaw.navigationTimeoutMs, DEFAULT_CONFIG.tokyoParks.navigationTimeoutMs),
       settleMs: readNumber(tokyoParksRaw.settleMs, DEFAULT_CONFIG.tokyoParks.settleMs),
@@ -181,6 +210,14 @@ export async function loadConfig(projectRoot: string): Promise<AppConfig> {
         DEFAULT_CONFIG.skytreeLeague.competitionTypes,
       ),
       excludeWithinDays: readNumber(skytreeLeagueRaw.excludeWithinDays, DEFAULT_CONFIG.skytreeLeague.excludeWithinDays),
+      excludeStartingAtOrAfter: readNullableTime(
+        skytreeLeagueRaw.excludeStartingAtOrAfter,
+        DEFAULT_CONFIG.skytreeLeague.excludeStartingAtOrAfter,
+      ),
+      excludedHostTeams: readStringArray(
+        skytreeLeagueRaw.excludedHostTeams,
+        DEFAULT_CONFIG.skytreeLeague.excludedHostTeams,
+      ),
       listingStatuses: readListingStatusArray(
         skytreeLeagueRaw.listingStatuses,
         DEFAULT_CONFIG.skytreeLeague.listingStatuses,

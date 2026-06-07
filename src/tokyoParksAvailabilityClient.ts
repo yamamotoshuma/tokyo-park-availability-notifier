@@ -25,6 +25,14 @@ function slotKey(slot: Omit<AvailabilitySlot, "key">): string {
   return [slot.parkName, slot.facilityName, slot.purposeLabel, slot.ymd, slot.startTime, slot.endTime].join("|");
 }
 
+function filterAvailabilitySlots(slots: AvailabilitySlot[], config: TokyoParksConfig): AvailabilitySlot[] {
+  const excludeStartingAtOrAfter = config.excludeStartingAtOrAfter;
+  if (!excludeStartingAtOrAfter) {
+    return slots;
+  }
+  return slots.filter((slot) => slot.startTime < excludeStartingAtOrAfter);
+}
+
 async function waitForParkOptions(page: Page, parkName: string, timeoutMs: number): Promise<void> {
   await page.waitForFunction(
     (label) => {
@@ -212,7 +220,7 @@ export class TokyoParksAvailabilityClient {
         allSlots.push(...(await extractAvailabilitySlots(page, this.config, target, detectedAt)));
       }
 
-      return allSlots.sort((left, right) =>
+      return filterAvailabilitySlots(allSlots, this.config).sort((left, right) =>
         `${left.ymd}${left.startTime}${left.facilityName}`.localeCompare(
           `${right.ymd}${right.startTime}${right.facilityName}`,
         ),
@@ -234,5 +242,6 @@ export const __privateForTests = {
   formatTimeFromDigits,
   addHours,
   slotKey,
+  filterAvailabilitySlots,
   weekdays: JP_WEEKDAYS,
 };

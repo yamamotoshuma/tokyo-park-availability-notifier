@@ -12,6 +12,8 @@ const baseConfig: SkytreeLeagueConfig = {
   targetAreas: [],
   competitionTypes: ["LG"],
   excludeWithinDays: 7,
+  excludeStartingAtOrAfter: "19:00",
+  excludedHostTeams: ["ORDERMADEBASEBALLclub"],
   listingStatuses: ["openWithGround"],
   excludeDeadlineLabels: ["締切", "終了", "調整中"],
   headless: true,
@@ -132,5 +134,37 @@ describe("filterListings", () => {
     });
 
     expect(listings.map((listing) => listing.id)).toEqual(["1"]);
+  });
+
+  it("excludes listings starting at or after the configured time", () => {
+    const listings = __privateForTests.filterListings({
+      rows: [
+        row({ id: "1", dateTimeText: "2026年06月06日 (土) 18： 30 -20： 30" }),
+        row({ id: "2", dateTimeText: "2026年06月06日 (土) 19： 00 -21： 00" }),
+        row({ id: "3", dateTimeText: "2026年06月06日 (土) 21： 00 -23： 00" }),
+      ] as never,
+      targets: [target("20260606")],
+      config: baseConfig,
+      detectedAt: "2026-05-31T00:00:00.000Z",
+      referenceDate: new Date(2026, 4, 20, 12),
+    });
+
+    expect(listings.map((listing) => listing.id)).toEqual(["1"]);
+  });
+
+  it("excludes configured host teams with normalized spelling", () => {
+    const listings = __privateForTests.filterListings({
+      rows: [
+        row({ id: "1", hostTeam: "ORDERMADEBASEBALLclub" }),
+        row({ id: "2", hostTeam: "Ordermade Baseball Club" }),
+        row({ id: "3", hostTeam: "東京ペンギンズ" }),
+      ] as never,
+      targets: [target("20260606")],
+      config: baseConfig,
+      detectedAt: "2026-05-31T00:00:00.000Z",
+      referenceDate: new Date(2026, 4, 20, 12),
+    });
+
+    expect(listings.map((listing) => listing.id)).toEqual(["3"]);
   });
 });

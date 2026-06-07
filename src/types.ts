@@ -8,6 +8,7 @@ export interface TokyoParksConfig {
   targetSaturdayOccurrences: number[];
   includeNextMonthFromDay: number;
   includePastDates: boolean;
+  excludeStartingAtOrAfter: string | null;
   headless: boolean;
   navigationTimeoutMs: number;
   settleMs: number;
@@ -25,6 +26,8 @@ export interface SkytreeLeagueConfig {
   targetAreas: string[];
   competitionTypes: string[];
   excludeWithinDays: number;
+  excludeStartingAtOrAfter: string | null;
+  excludedHostTeams: string[];
   listingStatuses: SkytreeLeagueListingStatus[];
   excludeDeadlineLabels: string[];
   headless: boolean;
