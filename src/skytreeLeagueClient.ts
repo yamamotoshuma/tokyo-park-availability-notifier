@@ -323,7 +323,7 @@ async function extractRawRows(
 async function extractOwnTeamActivityRows(page: Page): Promise<RawOwnTeamActivityRow[]> {
   return page.evaluate(() => {
     const normalize = (value: string | null | undefined) => (value ?? "").normalize("NFKC").replace(/\s+/g, " ").trim();
-    const getText = (element: Element | null | undefined) => normalize((element as HTMLElement | null)?.innerText);
+    const getText = (element: Element | null | undefined) => normalize(element?.textContent);
     const rows: RawOwnTeamActivityRow[] = [];
 
     for (const table of Array.from(document.querySelectorAll<HTMLTableElement>(".tabStTmWrap table"))) {
