@@ -254,7 +254,7 @@ async function openSchedule(page: Page, config: SkytreeLeagueConfig): Promise<vo
   });
   await page.waitForLoadState("networkidle", { timeout: 10_000 }).catch(() => undefined);
   await page.waitForSelector(".tabStTmWrap", { state: "attached", timeout: config.navigationTimeoutMs });
-  await page.waitForTimeout(config.settleMs);
+  await page.waitForTimeout(Math.max(config.settleMs, 3_000));
 }
 
 async function extractRawRows(
