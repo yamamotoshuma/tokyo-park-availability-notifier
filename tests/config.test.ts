@@ -27,6 +27,8 @@ describe("loadConfig", () => {
       skytreeLeague: {
         excludeStartingAtOrAfter: null,
         excludedHostTeams: [],
+        ownTeamNames: ["ORDERMADE BASEBALL CLUB"],
+        excludeDatesWithOwnTeamActivity: false,
         targetAreas: [],
         competitionTypes: [],
       },
@@ -35,6 +37,8 @@ describe("loadConfig", () => {
     expect(config.tokyoParks.excludeStartingAtOrAfter).toBe("09:00");
     expect(config.skytreeLeague.excludeStartingAtOrAfter).toBeNull();
     expect(config.skytreeLeague.excludedHostTeams).toEqual([]);
+    expect(config.skytreeLeague.ownTeamNames).toEqual(["ORDERMADE BASEBALL CLUB"]);
+    expect(config.skytreeLeague.excludeDatesWithOwnTeamActivity).toBe(false);
     expect(config.skytreeLeague.targetAreas).toEqual([]);
     expect(config.skytreeLeague.competitionTypes).toEqual([]);
   });

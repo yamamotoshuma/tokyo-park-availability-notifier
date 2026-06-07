@@ -64,13 +64,21 @@ async function runTokyoParks(options: {
   now: Date;
   runAt: string;
   minYmdToKeep: string;
+  excludedYmds: string[];
 }): Promise<void> {
-  const targets = buildTargetDates({
+  const excludedYmds = new Set(options.excludedYmds);
+  const baseTargets = buildTargetDates({
     referenceDate: options.now,
     occurrences: options.config.tokyoParks.targetSaturdayOccurrences,
     includeNextMonthFromDay: options.config.tokyoParks.includeNextMonthFromDay,
     includePastDates: options.config.tokyoParks.includePastDates,
   });
+  const excludedTargetYmds = baseTargets.filter((target) => excludedYmds.has(target.ymd)).map((target) => target.ymd);
+  const targets = baseTargets.filter((target) => !excludedYmds.has(target.ymd));
+
+  if (excludedTargetYmds.length > 0) {
+    console.log(`都立公園 自チーム関与日のため通知対象外: ${excludedTargetYmds.join(", ")}`);
+  }
 
   if (targets.length === 0) {
     console.log("都立公園の検索対象日がありません。");
@@ -116,15 +124,15 @@ async function runSkytreeLeague(options: {
   now: Date;
   runAt: string;
   minYmdToKeep: string;
-}): Promise<void> {
+}): Promise<string[]> {
   if (!options.config.skytreeLeague.enabled) {
-    return;
+    return [];
   }
 
   const secrets = await loadSkytreeLeagueSecrets(options.projectRoot);
   if (!secrets) {
     console.warn("スカイツリーグ認証情報がないため、試合募集検索はスキップします。");
-    return;
+    return [];
   }
 
   const targets = buildTargetDates({
@@ -137,7 +145,7 @@ async function runSkytreeLeague(options: {
 
   if (targets.length === 0) {
     console.log("スカイツリーグの検索対象日がありません。");
-    return;
+    return [];
   }
 
   const areaText =
@@ -148,7 +156,13 @@ async function runSkytreeLeague(options: {
 
   const state = await options.store.get();
   const client = new SkytreeLeagueClient(options.config.skytreeLeague, secrets);
-  const listings = await client.search(targets, options.now);
+  const result = await client.search(targets, options.now);
+  const listings = result.listings;
+  const targetYmds = new Set(targets.map((target) => target.ymd));
+  const excludedTargetYmds = result.ownTeamOccupiedYmds.filter((ymd) => targetYmds.has(ymd));
+  if (excludedTargetYmds.length > 0) {
+    console.log(`自チーム関与日のため通知対象外: ${excludedTargetYmds.join(", ")}`);
+  }
   const newListings = findNewItems(listings, state);
   let notifiedNewListings = newListings;
 
@@ -175,6 +189,8 @@ async function runSkytreeLeague(options: {
     runAt: options.runAt,
     minYmdToKeep: options.minYmdToKeep,
   });
+
+  return result.ownTeamOccupiedYmds;
 }
 
 async function runOnce(projectRoot: string): Promise<void> {
@@ -184,6 +200,22 @@ async function runOnce(projectRoot: string): Promise<void> {
   const minYmdToKeep = formatYmd(now);
   const store = NotifiedStore.fromProjectRoot(projectRoot, config.storage.notifiedPath);
 
+  let ownTeamOccupiedYmds: string[] = [];
+  let skytreeLeagueError: unknown = null;
+  try {
+    ownTeamOccupiedYmds = await runSkytreeLeague({
+      projectRoot,
+      config,
+      store,
+      now,
+      runAt,
+      minYmdToKeep,
+    });
+  } catch (error) {
+    skytreeLeagueError = error;
+    console.error(`スカイツリーグ検索に失敗しました。都立公園検索は継続します: ${String(error)}`);
+  }
+
   await runTokyoParks({
     projectRoot,
     config,
@@ -191,15 +223,12 @@ async function runOnce(projectRoot: string): Promise<void> {
     now,
     runAt,
     minYmdToKeep,
+    excludedYmds: ownTeamOccupiedYmds,
   });
-  await runSkytreeLeague({
-    projectRoot,
-    config,
-    store,
-    now,
-    runAt,
-    minYmdToKeep,
-  });
+
+  if (skytreeLeagueError) {
+    throw skytreeLeagueError;
+  }
 }
 
 async function main(): Promise<void> {

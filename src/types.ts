@@ -28,6 +28,8 @@ export interface SkytreeLeagueConfig {
   excludeWithinDays: number;
   excludeStartingAtOrAfter: string | null;
   excludedHostTeams: string[];
+  ownTeamNames: string[];
+  excludeDatesWithOwnTeamActivity: boolean;
   listingStatuses: SkytreeLeagueListingStatus[];
   excludeDeadlineLabels: string[];
   headless: boolean;
@@ -108,6 +110,11 @@ export interface SkytreeLeagueMatchListing extends NotifiableItem {
   deadlineText: string;
   detailUrl: string;
   detectedAt: string;
+}
+
+export interface SkytreeLeagueSearchResult {
+  listings: SkytreeLeagueMatchListing[];
+  ownTeamOccupiedYmds: string[];
 }
 
 export type NotificationItem = AvailabilitySlot | SkytreeLeagueMatchListing;

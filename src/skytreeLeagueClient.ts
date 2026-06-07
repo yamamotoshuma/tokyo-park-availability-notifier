@@ -3,6 +3,7 @@ import type {
   SkytreeLeagueConfig,
   SkytreeLeagueListingStatus,
   SkytreeLeagueMatchListing,
+  SkytreeLeagueSearchResult,
   SkytreeLeagueSecrets,
   TargetDate,
 } from "./types.js";
@@ -34,6 +35,12 @@ interface RawSkytreeLeagueListingRow {
   note: string;
   deadlineText: string;
   detailUrl: string;
+}
+
+interface RawOwnTeamActivityRow {
+  dateTimeText: string;
+  hostTeam: string;
+  applicantTeam: string | null;
 }
 
 function pad2(value: number): string {
@@ -148,8 +155,10 @@ function filterListings(options: {
   config: SkytreeLeagueConfig;
   detectedAt: string;
   referenceDate: Date;
+  excludedYmds?: string[];
 }): SkytreeLeagueMatchListing[] {
   const targetYmds = new Set(options.targets.map((target) => target.ymd));
+  const excludedYmds = new Set(options.excludedYmds ?? []);
   const targetAreas = options.config.targetAreas.map(normalizeAreaFilterText);
   const competitionTypes = options.config.competitionTypes.map(normalizeComparableText);
   const excludedHostTeams = options.config.excludedHostTeams.map(normalizeComparableText);
@@ -158,6 +167,9 @@ function filterListings(options: {
   for (const row of options.rows) {
     const listing = rawRowToListing(row, options.detectedAt);
     if (!listing || !targetYmds.has(listing.ymd)) {
+      continue;
+    }
+    if (excludedYmds.has(listing.ymd)) {
       continue;
     }
     if (isWithinExcludedLeadTime(listing.date, options.referenceDate, options.config.excludeWithinDays)) {
@@ -190,6 +202,30 @@ function filterListings(options: {
       `${right.ymd}${right.startTime}${right.area}${right.groundName}${right.id}`,
     ),
   );
+}
+
+function findOwnTeamOccupiedYmds(rows: RawOwnTeamActivityRow[], ownTeamNames: string[]): string[] {
+  const normalizedOwnTeamNames = new Set(ownTeamNames.map(normalizeComparableText));
+  if (normalizedOwnTeamNames.size === 0) {
+    return [];
+  }
+
+  const occupiedYmds = new Set<string>();
+  for (const row of rows) {
+    const isOwnTeamHost = normalizedOwnTeamNames.has(normalizeComparableText(row.hostTeam));
+    const isOwnTeamApplicant =
+      row.applicantTeam !== null && normalizedOwnTeamNames.has(normalizeComparableText(row.applicantTeam));
+    if (!isOwnTeamHost && !isOwnTeamApplicant) {
+      continue;
+    }
+
+    const parsed = parseJapaneseDateTime(row.dateTimeText);
+    if (parsed) {
+      occupiedYmds.add(parsed.ymd);
+    }
+  }
+
+  return Array.from(occupiedYmds).sort();
 }
 
 async function login(page: Page, config: SkytreeLeagueConfig, secrets: SkytreeLeagueSecrets): Promise<void> {
@@ -284,6 +320,39 @@ async function extractRawRows(
   }, statuses);
 }
 
+async function extractOwnTeamActivityRows(page: Page): Promise<RawOwnTeamActivityRow[]> {
+  return page.evaluate(() => {
+    const normalize = (value: string | null | undefined) => (value ?? "").normalize("NFKC").replace(/\s+/g, " ").trim();
+    const getText = (element: Element | null | undefined) => normalize((element as HTMLElement | null)?.innerText);
+    const rows: RawOwnTeamActivityRow[] = [];
+
+    for (const table of Array.from(document.querySelectorAll<HTMLTableElement>(".tabStTmWrap table"))) {
+      const headerCells = Array.from(table.querySelectorAll<HTMLTableCellElement>("tr th"));
+      const headers = headerCells.map(getText);
+      const dateTimeIndex = headers.findIndex((header) => header.includes("募集日/時間"));
+      const hostTeamIndex = headers.findIndex((header) => header.includes("グランド取得チーム"));
+      const applicantTeamIndex = headers.findIndex((header) => header.includes("対戦申込チーム"));
+      if (dateTimeIndex < 0 || hostTeamIndex < 0) {
+        continue;
+      }
+
+      for (const row of Array.from(table.querySelectorAll<HTMLTableRowElement>("tr"))) {
+        const cells = Array.from(row.querySelectorAll<HTMLTableCellElement>("td"));
+        if (cells.length <= Math.max(dateTimeIndex, hostTeamIndex, applicantTeamIndex)) {
+          continue;
+        }
+        rows.push({
+          dateTimeText: getText(cells[dateTimeIndex]),
+          hostTeam: getText(cells[hostTeamIndex]),
+          applicantTeam: applicantTeamIndex >= 0 ? getText(cells[applicantTeamIndex]) || null : null,
+        });
+      }
+    }
+
+    return rows;
+  });
+}
+
 export class SkytreeLeagueClient {
   private browser: Browser | null = null;
 
@@ -292,7 +361,7 @@ export class SkytreeLeagueClient {
     private readonly secrets: SkytreeLeagueSecrets,
   ) {}
 
-  async search(targets: TargetDate[], referenceDate = new Date()): Promise<SkytreeLeagueMatchListing[]> {
+  async search(targets: TargetDate[], referenceDate = new Date()): Promise<SkytreeLeagueSearchResult> {
     this.browser = await chromium.launch({
       headless: this.config.headless,
     });
@@ -311,13 +380,20 @@ export class SkytreeLeagueClient {
       await openSchedule(page, this.config);
       const detectedAt = new Date().toISOString();
       const rows = await extractRawRows(page, this.config.listingStatuses);
-      return filterListings({
-        rows,
-        targets,
-        config: this.config,
-        detectedAt,
-        referenceDate,
-      });
+      const ownTeamOccupiedYmds = this.config.excludeDatesWithOwnTeamActivity
+        ? findOwnTeamOccupiedYmds(await extractOwnTeamActivityRows(page), this.config.ownTeamNames)
+        : [];
+      return {
+        listings: filterListings({
+          rows,
+          targets,
+          config: this.config,
+          detectedAt,
+          referenceDate,
+          excludedYmds: ownTeamOccupiedYmds,
+        }),
+        ownTeamOccupiedYmds,
+      };
     } finally {
       await context.close().catch(() => undefined);
       await this.close();
@@ -336,4 +412,5 @@ export const __privateForTests = {
   filterListings,
   shouldExcludeDeadline,
   isWithinExcludedLeadTime,
+  findOwnTeamOccupiedYmds,
 };

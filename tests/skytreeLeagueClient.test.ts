@@ -14,6 +14,8 @@ const baseConfig: SkytreeLeagueConfig = {
   excludeWithinDays: 7,
   excludeStartingAtOrAfter: "19:00",
   excludedHostTeams: ["ORDERMADEBASEBALLclub"],
+  ownTeamNames: ["ORDERMADE BASEBALL CLUB"],
+  excludeDatesWithOwnTeamActivity: true,
   listingStatuses: ["openWithGround"],
   excludeDeadlineLabels: ["締切", "終了", "調整中"],
   headless: true,
@@ -166,5 +168,52 @@ describe("filterListings", () => {
     });
 
     expect(listings.map((listing) => listing.id)).toEqual(["3"]);
+  });
+
+  it("excludes every listing on an own-team occupied date", () => {
+    const listings = __privateForTests.filterListings({
+      rows: [
+        row({ id: "1", hostTeam: "東京ペンギンズ" }),
+        row({
+          id: "2",
+          dateTimeText: "2026年06月20日 (土) 13： 00 -15： 00",
+          hostTeam: "東京ジュピターズ",
+        }),
+      ] as never,
+      targets: [target("20260606"), target("20260620")],
+      config: baseConfig,
+      detectedAt: "2026-05-31T00:00:00.000Z",
+      referenceDate: new Date(2026, 4, 20, 12),
+      excludedYmds: ["20260620"],
+    });
+
+    expect(listings.map((listing) => listing.id)).toEqual(["1"]);
+  });
+});
+
+describe("findOwnTeamOccupiedYmds", () => {
+  it("finds dates where the own team is either host or applicant", () => {
+    const occupiedYmds = __privateForTests.findOwnTeamOccupiedYmds(
+      [
+        {
+          dateTimeText: "2026年06月20日 (土) 17： 00 -19： 00",
+          hostTeam: "ORDERMADE BASEBALL CLUB",
+          applicantTeam: null,
+        },
+        {
+          dateTimeText: "2026年07月04日 (土) 9： 00 -11： 00",
+          hostTeam: "東京ペンギンズ",
+          applicantTeam: "Ordermade Baseball Club",
+        },
+        {
+          dateTimeText: "2026年07月18日 (土) 9： 00 -11： 00",
+          hostTeam: "東京ペンギンズ",
+          applicantTeam: "別チーム",
+        },
+      ],
+      ["ORDERMADEBASEBALLclub"],
+    );
+
+    expect(occupiedYmds).toEqual(["20260620", "20260704"]);
   });
 });

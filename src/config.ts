@@ -46,6 +46,8 @@ const DEFAULT_CONFIG: AppConfig = {
     excludeWithinDays: 7,
     excludeStartingAtOrAfter: "19:00",
     excludedHostTeams: ["ORDERMADEBASEBALLclub"],
+    ownTeamNames: ["ORDERMADE BASEBALL CLUB"],
+    excludeDatesWithOwnTeamActivity: true,
     listingStatuses: ["openWithGround"],
     excludeDeadlineLabels: ["締切", "終了", "調整中"],
     headless: true,
@@ -217,6 +219,11 @@ export async function loadConfig(projectRoot: string): Promise<AppConfig> {
       excludedHostTeams: readStringArray(
         skytreeLeagueRaw.excludedHostTeams,
         DEFAULT_CONFIG.skytreeLeague.excludedHostTeams,
+      ),
+      ownTeamNames: readStringArray(skytreeLeagueRaw.ownTeamNames, DEFAULT_CONFIG.skytreeLeague.ownTeamNames),
+      excludeDatesWithOwnTeamActivity: readBoolean(
+        skytreeLeagueRaw.excludeDatesWithOwnTeamActivity,
+        DEFAULT_CONFIG.skytreeLeague.excludeDatesWithOwnTeamActivity,
       ),
       listingStatuses: readListingStatusArray(
         skytreeLeagueRaw.listingStatuses,
